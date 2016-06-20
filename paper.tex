@@ -39,16 +39,16 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-This paper introduces an attention mechanism for word embeddings produced by the Random Indexing framework. The attention mechanism consists of a parameterization of the context windows, and the approach is shown to improve the performance in both word similarity and sentiment classification tasks. We also demonstrate the relation between Random Indexing and Convolutional Neural Networks.
+This paper introduces a parameterization for word embeddings produced by the Random Indexing framework. The parameterization introduces position specific weights in the context windows, and the approach is shown to improve the performance in both word similarity and sentiment classification tasks. We also demonstrate the relation between Random Indexing and Convolutional Neural Networks.
 \end{abstract}
 
 \section{Introduction}
 
-One of the most exciting recent advances in deep learning is the use of {\em attention mechanisms}, which enable the model to pay attention to various useful items in the input \cite{mnih:2014,Hermann:2015}. In the case of word semantics, such useful items are typically words that occur in the context of another word. Quantifying the importance of contextual information for semantic representation is the goal of {\em distributional semantics}, in which contextual information is used to quantify semantic similarities between words \cite{Turney:Pantel:2010}. However, standard practice in distributional semantics is to weight the importance of context items based on either its frequency \cite{Sahlgren:2016}, its distance to the focus word \cite{Lund:1995}, or its global co-occurrence statistics \cite{Niwa:1994}. Thus far, there has not been much work on using something similar to an attention mechanism in order to select useful context items for distributional semantics.
+Quantifying the importance of contextual information for semantic representation is the goal of {\em distributional semantics}, in which contextual information is used to quantify semantic similarities between words \cite{Turney:Pantel:2010}. However, standard practice in distributional semantics is to weight the importance of context items based on either its frequency \cite{Sahlgren:2016}, its distance to the focus word \cite{Lund:1995}, or its global co-occurrence statistics \cite{Niwa:1994}. Thus far, there has not been much work on applying machine learning to this in order to select useful context items for distributional semantics.
 
-The idea with such an attention mechanism is to weight the items in the context window based on their usefulness for accomplishing some specific task, such as sentiment classification or word similarity rating. In this paper, we introduce a simple attention mechanism for the Random Indexing processing model. We first show that Random Indexing can be formulated in terms of convolution, in order to situate the framework in the context of neural networks.
+The idea with the proposed parameterization is to weight the items in the context window based on their usefulness for accomplishing some specific task, such as sentiment classification or word similarity rating. In this paper, we introduce a simple parameterization for the Random Indexing processing model. We first show that Random Indexing can be formulated in terms of a convolution, in order to situate the framework in the context of neural networks.
 %% MS: andra argument för detta?
-We then introduce a simple attention model that parameterizes the positions on the context windows, and we show that the parameterization improves the performance of the embeddings in both word similarity and sentiment classification tasks.
+We then introduce a simple parameterization of the positions on the context windows, and we show that it improves the performance of the embeddings in some word similarity and sentiment classification tasks. \footnote{The code is available at: \url{http://github.com/TobiasNorlund/Attention_RI}}
 
 \section{Notation}
 
@@ -121,7 +121,7 @@ In word embeddings, different senses are represented by co-occurrences with diff
 
 Unfortunately, it is not, in the general case, possible to know a priori which context items will be useful to construct embeddings for a particular task. Such context (i.e.~feature) selection instead needs to be performed jointly with training the classifier. When backpropagation is used as optimization strategy of the classifier, one can also treat the word embeddings as parameters to update. It is straightforward to take the derivatives of the objective function with respect to the input and apply Stochastic Gradient Descent (SGD) updates just as for the model parameters. This strategy is well known \cite{ZhangWallace2015}, and will be referred to as SGD Random Indexing (SGD-RI). 
 
-\section{Attention by Parameterization}\label{sec:att_ri}
+\section{Parameterization of context window}\label{sec:att_ri}
 
 Another strategy is to parameterize the word embeddings, and to optimize those parameters jointly with the task using backpropagation. The RI algorithm, as defined in \cite{Sahlgren:2016}, weights the importance of context items based on their relative frequency according to Equation \eqref{equ:entropy_weight}:
 
@@ -138,7 +138,7 @@ Equation \eqref{equ:entropy_weight_mod} formalizes the parameterization by intro
 %\begin{figure}
 %  \centering
 %  \includegraphics[width=\textwidth]{fig/attention_ri.pdf}
-%  \caption{\label{fig:attention_ri} Illustration of the ATT-RI parameterization where the window size is $2+2$. Each word has its own set of weights.}
+%  \caption{\label{fig:attention_ri} Illustration of the PAR-RI parameterization where the window size is $2+2$. Each word has its own set of weights.}
 %\end{figure}
 
 % woa, det här ser inte helt rätt ut - se ovan!
@@ -206,7 +206,7 @@ Equation \eqref{equ:att_ri_full} can now be rewritten as a matrix vector multipl
 
 In other words, this suggests instead of aggregating embedding vectors $\textbf{v}_i$ according to \eqref{eq:context-update}, to aggregate matrices $\textbf{V}_i$ upon parsing the corpus. The embedding vectors are then calculated as a multiplication with a parameter vector $\boldsymbol\theta_i$ according to \eqref{equ:att_ri_matrix}. Note that when $\boldsymbol\theta_i = \textbf{1}$ you recover the vanilla Random Indexing embeddings.
 
-The parameterized version effectively uses a form of attention mechanism, since we aim to focus our attention to certain parts of the word's contexts depending on the task at hand. Consequently, we will refer to this strategy as Attention Random Indexing (ATT-RI).
+We will refer to this strategy as Parameterized Random Indexing (PAR-RI).
 
 \section{Example: Word Similarity} \label{cha:simlex_test}
 
@@ -264,7 +264,7 @@ This procedure is performed using $\textbf{V}_*$ matrices generated from a dump 
 \begin{table}[h]
     \centering
     \small{
-    \caption{Hyper-parameters for ATT-RI.}
+    \caption{Hyper-parameters for PAR-RI.}
     \label{tab:att_ri_settings}
     \begin{tabular}{|lll|}
 	\hline
@@ -318,7 +318,7 @@ $s$                  & 3                & Filter max $l_2$-norm \\
 \end{tabular}}
 \end{table}
 
-As comparison with the different RI-based embeddings (RI, SGD-RI, and ATT-RI), we also include results using embeddings produced with SGNS \cite{W2V} and GloVe \cite{GloVe}, both with 300-dimensional vectors and a window size of 2. We also include results using embeddings randomly sampled from a uniform $U(-0.25, 0.25)$ distribution (RAND). All word embeddings (except for the RAND vectors) are pre-trained (unsupervised) on a dump of Wikipedia. We list all hyper-parameters for RI, SGNS and GloVe in table \ref{tab:ri_settings}, \ref{tab:sg_settings} and \ref{tab:gl_settings}
+As comparison with the different RI-based embeddings (RI, SGD-RI, and PAR-RI), we also include results using embeddings produced with SGNS \cite{W2V} and GloVe \cite{GloVe}, both with 300-dimensional vectors and a window size of 2. We also include results using embeddings randomly sampled from a uniform $U(-0.25, 0.25)$ distribution (RAND). All word embeddings (except for the RAND vectors) are pre-trained (unsupervised) on a dump of Wikipedia. We list all hyper-parameters for RI, SGNS and GloVe in table \ref{tab:ri_settings}, \ref{tab:sg_settings} and \ref{tab:gl_settings}
 
 \begin{table}[h] 
 {\small
@@ -370,7 +370,7 @@ As comparison with the different RI-based embeddings (RI, SGD-RI, and ATT-RI), w
 
 The results of all experiments are shown in table \ref{tab:results} (next page).\footnote{Since our focus in this paper is the effect of the word embeddings, we will not comment further on the performance differences between the MLP and CNN classifiers.}
 %The accuracies for the PL05 dataset are slightly lower than SST, which is consistent with the results of others \cite{kim:2014,ZhangWallace2015}. Comparing the MLP with the CNN, the latter consistently outperformed the former with about 3-6 points. This is not surprising and one major difference is that the CNN takes word order in consideration whereas the MLP does not. Another interesting observation is the fact that the variances are notably higher in the MLP model. The reason for this must be due to the neural network getting stuck in severe local minima from which it cannot escape. In the CNN, dropout is applied as a regularizer at its fully connected layer that may have influenced the fact that its variances are so much lower. 
-Comparing the various embeddings, it is obvious that the performance differences are very small, and thus not likely to be of any significant practical importance. This is especially true for the MLP experiments where the variances reach over two points in many cases. On the other hand, all embeddings outperform the randomized RAND vectors, which demonstrates that classification performance is improved when the model can take semantic information into account. The best performing embedding for the MLP classifier is ATT-RI, while SGNS performs better using the CNN model. The GloVe embeddings, despite their theoretical similarities to the SGNS embeddings \cite{suzuki-nagata:2015:ACL-IJCNLP}, consistently underperform both in comparison with SGNS and ATT-RI (and, in the case of the MLP classifier, also the SGD-RI embeddings). This is in contrast to the experiments performed by \cite{ZhangWallace2015} where the difference was minor.
+Comparing the various embeddings, it is obvious that the performance differences are very small, and thus not likely to be of any significant practical importance. This is especially true for the MLP experiments where the variances reach over two points in many cases. On the other hand, all embeddings outperform the randomized RAND vectors, which demonstrates that classification performance is improved when the model can take semantic information into account. The best performing embedding for the MLP classifier is PAR-RI, while SGNS performs better using the CNN model. The GloVe embeddings, despite their theoretical similarities to the SGNS embeddings \cite{suzuki-nagata:2015:ACL-IJCNLP}, consistently underperform both in comparison with SGNS and PAR-RI (and, in the case of the MLP classifier, also the SGD-RI embeddings). This is in contrast to the experiments performed by \cite{ZhangWallace2015} where the difference was minor.
 
 \begin{table*}[!ht]
 \centering
@@ -401,7 +401,7 @@ Comparing the various embeddings, it is obvious that the performance differences
 \end{tabular}
 \end{table*}
 
-Comparing the ATT-RI embeddings with SGD-RI and standard RI, it seems ATT-RI performs well, with the highest mean accuracy on the SST dataset, using the MLP model. SGD-RI improves the results compared to the standard RI embeddings for the MLP model, but not for the CNN model. Updating of the SGNS embeddings just like SGD-RI for the CNN have also been studied in Zhang and Wallace \shortcite{ZhangWallace2015}, who report a performance boost of about $\sim$0.8\%. This also contrasts to our results with SGD-RI using the CNN model, which instead decrease the performance compared to standard RI. This could be due to the RI embeddings being more high dimensional than SGNS, yielding a larger and harder parameter space to optimize.
+Comparing the PAR-RI embeddings with SGD-RI and standard RI, it seems PAR-RI performs well, with the highest mean accuracy on the SST dataset, using the MLP model. SGD-RI improves the results compared to the standard RI embeddings for the MLP model, but not for the CNN model. Updating of the SGNS embeddings just like SGD-RI for the CNN have also been studied in Zhang and Wallace \shortcite{ZhangWallace2015}, who report a performance boost of about $\sim$0.8\%. This also contrasts to our results with SGD-RI using the CNN model, which instead decrease the performance compared to standard RI. This could be due to the RI embeddings being more high dimensional than SGNS, yielding a larger and harder parameter space to optimize.
 
 Comparing our results to other reported results in the literature, Kim \shortcite{kim:2014} and Zhang and Wallace \shortcite{ZhangWallace2015} manage to push the boundaries up to 80.10 for the PL05 data, and up to 84.88 for the SST data using SGNS embeddings pre-trained on a much larger 100 billion tokens Google News dataset. We believe this somewhat increased performance is partly due to the bigger dataset. Another factor could also be that the language style in news articles is more similar to the movie reviews compared to Wikipedia, arguably yielding better-suited embeddings.
  
@@ -415,7 +415,7 @@ Comparing our results to other reported results in the literature, Kim \shortcit
   \caption{\label{fig:att_ri_adj} The learned weights for four adjectives (top row), four determiners (middle row), and four nouns (bottom row).}
 \end{figure*}
 
-When the ATT-RI parametrization was proposed, the hypothesis was that certain relative positions in the context windows would be more important in describing the context of a word than others. The results in the two previous sections demonstrate that the proposed attention mechanism is able to improve the embeddings in both a word similarity task, and (to a lesser extent) a sentiment classification task. This indicates that the parameterization is actually able to find useful context profiles for terms used in the various test settings. In this section, we exemplify the kinds of context profiles learned by the attention model when parameterized for the sentiment classification task. 
+When the PAR-RI parametrization was proposed, the hypothesis was that certain relative positions in the context windows would be more important in describing the context of a word than others. The results in the two previous sections demonstrate that the proposed parameterization is able to improve the embeddings in both a word similarity task, and (to a lesser extent) a sentiment classification task. This indicates that the parameterization is actually able to find useful context profiles for terms used in the various test settings. In this section, we exemplify the kinds of context profiles learned when trained for the sentiment classification task. 
 %We initialized all window weights $\boldsymbol\theta_i$s to one vectors and updated using backpropagation to the task at hand, sentiment analysis in our case.
 
 %\begin{figure*}
@@ -440,7 +440,7 @@ As noted in the introduction, is is common practice in distributional semantics 
 
 \section{Conclusion}
 
-This paper has introduced a simple attention mechanism for the RI framework, which has also been derived in terms of convolution. The attention mechanism parameterizes the positions in the context windows with respect to the performance of the embeddings in some given task, such as word similarity or text classification. Our experiments show that the proposed ATT-RI model is able to improve the performance of the embeddings in many cases, and that the results are competitive in comparison with other well-known embeddings. The idea of parameterizing the window positions could also be applied to other distributional semantic models, such as SGNS. 
+This paper has introduced a simple parameterization for the RI framework, which has also been derived in terms of convolution. It parameterizes the positions in the context windows and optimizes with respect to the performance of the embeddings in some given task, such as word similarity or text classification. Our experiments show that the proposed PAR-RI model is able to improve the performance of the embeddings in many cases, and that the results are competitive in comparison with other well-known embeddings. The idea of parameterizing the window positions could also be applied to other distributional semantic models, such as SGNS. 
 
 We note that all embeddings used in the sentiment classification task produce very similar results. This indicates that in practice, the word embeddings included in this paper are more or less equivalent. It is therefore doubtful whether it is possible to draw any conclusions based on these results regarding the question whether any single embedding is superior to the others in the general case.
 
