@@ -1,0 +1,458 @@
+\documentclass[11pt]{article}
+\usepackage{acl2016}
+\usepackage{amsmath}
+\usepackage[linesnumbered]{algorithm2e}
+\usepackage{amsfonts}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{times}
+\usepackage{url}
+\usepackage{latexsym}
+
+% Tab
+\newcommand{\itab}[1]{\hspace{0em}\rlap{#1}}
+\newcommand{\tab}[1]{\hspace{1.2cm}\rlap{#1}}
+
+\title{Parameterized context windows in Random Indexing}
+
+\author{Tobias Norlund \\
+	Schibstedt \\
+    Västra Järnvägsgatan 21 \\
+    111 64 Stockholm \\
+    Sweden \\
+	{\tt tobias.norlund@schibsted.com} \\\And
+    David Nilsson \\
+    Nepa \\
+    Maria Skolgata 83 \\
+    118 53 Stockholm \\
+    Sweden \\
+    {\tt david.nilsson@nepa.com} \\\And
+    Magnus Sahlgren \\
+  	Gavagai \\
+  	Slussplan 9 \\
+  	111 30 Stockholm \\
+  	Sweden \\
+  	{\tt mange@gavagai.se}}
+
+\date{}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+This paper introduces an attention mechanism for word embeddings produced by the Random Indexing framework. The attention mechanism consists of a parameterization of the context windows, and the approach is shown to improve the performance in both word similarity and sentiment classification tasks. We also demonstrate the relation between Random Indexing and Convolutional Neural Networks.
+\end{abstract}
+
+\section{Introduction}
+
+One of the most exciting recent advances in deep learning is the use of {\em attention mechanisms}, which enable the model to pay attention to various useful items in the input \cite{mnih:2014,Hermann:2015}. In the case of word semantics, such useful items are typically words that occur in the context of another word. Quantifying the importance of contextual information for semantic representation is the goal of {\em distributional semantics}, in which contextual information is used to quantify semantic similarities between words \cite{Turney:Pantel:2010}. However, standard practice in distributional semantics is to weight the importance of context items based on either its frequency \cite{Sahlgren:2016}, its distance to the focus word \cite{Lund:1995}, or its global co-occurrence statistics \cite{Niwa:1994}. Thus far, there has not been much work on using something similar to an attention mechanism in order to select useful context items for distributional semantics.
+
+The idea with such an attention mechanism is to weight the items in the context window based on their usefulness for accomplishing some specific task, such as sentiment classification or word similarity rating. In this paper, we introduce a simple attention mechanism for the Random Indexing processing model. We first show that Random Indexing can be formulated in terms of convolution, in order to situate the framework in the context of neural networks.
+%% MS: andra argument för detta?
+We then introduce a simple attention model that parameterizes the positions on the context windows, and we show that the parameterization improves the performance of the embeddings in both word similarity and sentiment classification tasks.
+
+\section{Notation}
+
+Using a vocabulary $\mathcal{V}$ of words $w_i$ for $i=1,\dots,|\mathcal{V}|$, we seek word embeddings $\textbf{v}_i \in \mathbb{R}^d$ by collecting statistics from a corpus $\mathcal{C} = \{w_1, \dots, w_t, \dots, w_N\}$. We will interchangeably mix subscripts $i$ and $t$ of words and embeddings to index the vocabulary and corpus respectively.
+
+\section{Random Indexing as Convolution}
+
+Random Indexing (RI) \cite{Kanerva:2000,Kanerva:2009} is a distributional semantic model that updates the embedding vectors $\textbf{v}_*$ in an online fashion by summing the sparse random vectors $\textbf{e}_*$ that represent the context items (these vectors are called {\em random index vectors} and act as unique identifiers for the context items, words in this case):
+\begin{equation}
+    \label{eq:rand-update}
+    \textbf{v}_t \leftarrow \textbf{v}_t + \sum_{\substack{l = -k\\l\neq 0}}^{k} h(w_{t+l})\textbf{e}_{t+l}
+\end{equation}
+$k$ is the context window size and $h(w)$ some weight that quantifies the importance of the context item (the standard setting is $h(w)=1$ for all $w$). Here $\textbf{e}_{t+l}$ is the random index vector to corpus item $w_{t+l}$.
+%% MS: explain the variables!
+% * <carl.david.nilsson@gmail.com> 2016-05-03T19:21:37.741Z:
+%
+% Som du säger - man kanske måste förklara notationen lite.
+% f(w) borde vara en vektor och inte frekvens?
+%
+% ^.
+
+Equation \eqref{eq:rand-update} describes the update rule of RI and the final embeddings $\mathbf{v}_i$ can be expressed as:
+
+\begin{equation}
+    \label{eq:rand-final}
+    \textbf{v}_i = \displaystyle\sum\limits_{\substack{l = -k \\ l \neq 0}}^k\displaystyle\sum\limits_{\substack{t = 1 \\ w_t = w_i}}^N h(w_{t+l})\textbf{e}_{t+l}
+\end{equation}
+
+To establish the equivalence between RI and convolution, we can reformulate the update rule in Equation \eqref{eq:rand-update} as follows; let $\mathbf{h} \in \mathbb{R}^{(2k+1) \times d}$ be a filter function where
+\begin{equation*}
+\resizebox{0.49\textwidth}{!}{$h_{lj} = \begin{cases} 1, & \forall (l,j) \in \{(0, \frac{d}{2}), \dots, (k-1, \frac{d}{2}), (k+1, \frac{d}{2}), \dots, (2k, \frac{d}{2})\} \\
+                                       0, & \mbox{ else}
+                \end{cases}$}
+\end{equation*}
+Furthermore, let $\mathbf{S} \in \mathbb{R}^{N \times d}$ be a matrix of stacked sparse random vectors $\textbf{e}_t$.
+Now, if we use $\mathbf{h}$ and $\mathbf{S}$, we can rewrite the second term of the random indexing update rule in Equation \eqref{eq:rand-update}:
+\begin{align}
+    \label{eq:conv-2}
+    \mathbf{Z}_{tv} & = \sum_{l=0}^{2k} \sum_{j=0}^{d} (\textbf{e}_{t-l+k})_{v-j+d} \mathbf{h}_{lj}.
+\end{align}
+Equation \eqref{eq:conv-2} is a 2D discrete convolution between $\mathbf{S}$ and $\mathbf{h}$, hence:
+\begin{equation}
+    \label{eq:conv-3}
+    \resizebox{0.48\textwidth}{!}{$\mathbf{Z}_{tv} = (\mathbf{S} \ast \mathbf{h})[t, v] = \sum_{l=0}^{2k} \sum_{j=0}^{d} (\textbf{e}_{t-l+k})_{v-j+d} \mathbf{h}_{lj}.$}
+\end{equation}
+Because $\mathbf{h}$ has been defined with zeros everywhere except for column $\frac{d}{2}$, Equation \eqref{eq:conv-3} can been seen as a 1D convolution over each column vector in $\mathbf{S}$,
+\begin{align}
+    \label{eq:conv-4}
+    \mathbf{Z}_{tv} & = (\mathbf{S}^{T}_{v} \ast \mathbf{h}^{T}_{\frac{d}{2}})[t] = \sum_{l=0}^{2k}( \textbf{e}_{t-l+k})_{v} \mathbf{h}_{t\frac{d}{2}}.
+\end{align}
+% \hfill \textit{Q.E.D.}\vspace{10px}\\
+% This deduction shows that for each context $\mathbf{C}_{u}$, RI is equivalent to 1D convolution with a filter function defined in Equation \eqref{eq:conv-4}. 
+%% MS: reference to BEAGLE?
+%% MS: does it make sense to refer to the following here?
+%% DN: Don't think it makes sense since the deduction shows the equivalence between Convolution and RI and not neural networks and RI. If one would explain that CNNs use convolution and then ref. to this similarity some where. Something like this CNN -> Convolution <-> RI ... If that makes sense :)
+% The similarity between RI and neural networks has previously been noted by \cite{Sakurai:2002}.
+
+%% MS: perhaps ref to the new paper on arxiv on sketching for nn?
+
+%% TN: Det som egentligen saknas i denna faltnings-tolkning av RI är att kontextvektorerna inte kan  avläsas direkt ur Z, utan ges av:
+%%
+%%   kontextvektor(w_i) = sum_(t: w_t = w_i) Z_t
+%%
+
+\section{Dealing with Redundant Features} \label{cha:ri}
+
+Since word embeddings (produced by RI or some other distributional model) are constructed unsupervised by collecting co-occurrence information from a large corpus, it is likely that the resulting embeddings are very general, which may lower the expressiveness of the embeddings if they are going to be used in a very specific domain. Take the example of training a text categorization classifier within a financial context; corpus occurrences of the words ``bank" and ``stock" in the senses of \textsc{large collection} and \textsc{inventory} will likely not provide useful information for the embeddings in this domain. 
+%Another example can be sentiment analysis, in which we seek to quantify the proportion a text document is associated with an attitudinal concept such as \textsc{positive} or \textsc{negative}. It seems reasonable to believe that attitudinally loaded terms (in effect, adjectives) should play a more important role in describing the contexts of words for such a task.
+In word embeddings, different senses are represented by co-occurrences with different context items \cite{Gyllensten:Sahlgren:2015}. We refer to context items that are less useful for a specific task as {\em redundant features} of the embeddings. 
+
+Unfortunately, it is not, in the general case, possible to know a priori which context items will be useful to construct embeddings for a particular task. Such context (i.e.~feature) selection instead needs to be performed jointly with training the classifier. When backpropagation is used as optimization strategy of the classifier, one can also treat the word embeddings as parameters to update. It is straightforward to take the derivatives of the objective function with respect to the input and apply Stochastic Gradient Descent (SGD) updates just as for the model parameters. This strategy is well known \cite{ZhangWallace2015}, and will be referred to as SGD Random Indexing (SGD-RI). 
+
+\section{Attention by Parameterization}\label{sec:att_ri}
+
+Another strategy is to parameterize the word embeddings, and to optimize those parameters jointly with the task using backpropagation. The RI algorithm, as defined in \cite{Sahlgren:2016}, weights the importance of context items based on their relative frequency according to Equation \eqref{equ:entropy_weight}:
+
+\begin{equation}\label{equ:entropy_weight}
+h(w_t) = \exp\left({-c\cdot\frac{f(w_t)}{|\mathcal{V}|}}\right)
+\end{equation}
+\noindent
+where $c$ is a constant, $f(w_t)$ is the corpus frequency of item $w_t$, and $|\mathcal{V}|$ is the size of the vocabulary (i.e.~the number of unique words seen thus far).
+
+We would however like to parameterize context items not only depending on relative frequency but also on their usefulness for the specific task at hand. To describe the suggested parametrization, recall the Random Indexing algorithm in Equation \eqref{eq:rand-update} where we look at each word and its context in the corpus in a streaming fashion, and construct embedding vectors by summing the index vectors of all words occurring in the context. A fairly obvious refinement of this algorithm would be to parameterize the relative positions within the context window depending on their usefulness for the task at hand. % Figure \ref{fig:attention_ri} illustrates the general idea, and
+%We will try to parameterize the window positions such that the index vectors are weighted conditioned on their relative position and the focus word before added to the context vector.
+Equation \eqref{equ:entropy_weight_mod} formalizes the parameterization by introducing an additional factor to the weighting scheme:
+
+%\begin{figure}
+%  \centering
+%  \includegraphics[width=\textwidth]{fig/attention_ri.pdf}
+%  \caption{\label{fig:attention_ri} Illustration of the ATT-RI parameterization where the window size is $2+2$. Each word has its own set of weights.}
+%\end{figure}
+
+% woa, det här ser inte helt rätt ut - se ovan!
+\begin{equation}\label{equ:entropy_weight_mod}
+h(w_{t+l}) = \theta_l^{w_t}\exp\left({-c\cdot\frac{f(w_t)}{|\mathcal{V}|}}\right)
+\end{equation}
+
+%% DN: Tror att subscripten är lite fel om man jämför med
+%% subscripten som används i faltningen. Man kanske vill ändra notation
+%% för frekvensen... eller i uppdateringsregeln (1) och (2), blir
+%% förvirrande att f är både en funktion och frekvens.
+Inserting this parameterization into the update rule in Equation \eqref{eq:rand-update}, we get:
+\begin{equation}
+    \label{eq:rand-update-att}
+    \textbf{v}_t \leftarrow \textbf{v}_t + \sum_{\substack{l = -k\\l\neq 0}}^{k} \theta_l^{w_t}\exp\left({-c\cdot\frac{f(w_{t+l})}{|\mathcal{V}|}}\right)\textbf{e}_{t+l}
+\end{equation}
+which is equivalent to:
+
+% For this parametrization to be plausible, we fit the weights to optimize the embedding's performance to a semantic similarity dataset called SimLex. 
+
+%\begin{equation}
+%    \textbf{v}_i = \displaystyle\sum\limits_{\substack{l = -k \\ l \neq 0}}^k\displaystyle\sum\limits_{\substack{t = 1\\ w_t = %w_i}}^{|\mathcal{T}|} h(t,l)\textbf{e}_{t+l}
+%\end{equation}
+%With the expression from \eqref{equ:entropy_weight_mod} inserted, it becomes:
+
+%% DN: Vad betyder \textbf{e}_{t+l} i detta fallet?
+%% TN: - indexvektor för ord med index t+l i korpuset
+\begin{equation}\label{eq:context-update}
+    \textbf{v}_i = \displaystyle\sum\limits_{\substack{l = -k \\ l \neq 0}}^k\displaystyle\sum\limits_{\substack{t = 1 \\ w_t = w_i}}^N \theta_l^{w_t}\exp\left({-c\cdot\frac{f(w_{t+l})}{|\mathcal{V}|}}\right)\textbf{e}_{t+l}
+\end{equation}
+
+By careful inspection, the $\theta_l^{w_t}$ can be moved outside the inner sum, while swapping the subscript to $i$ since $w_t = w_i$:
+
+\begin{equation}\label{equ:att_ri_full}
+    \textbf{v}_i = \displaystyle\sum\limits_{\substack{l = -k \\ l \neq 0}}^k\theta_l^{w_i}
+    \underbrace{\displaystyle\sum\limits_{\substack{t = 1 \\ w_t = w_i}}^N \exp\left({-c\cdot\frac{f(w_{t+l})}{|\mathcal{V}|}}\right)\textbf{e}_{t+l}}_{\tilde{\textbf{v}}_i^l}
+\end{equation}
+
+The rewrite now allows the inner sum to be calculated before fitting the $\theta_l^{w_i}$s which makes the algorithm much more efficient. In practice, this means we aggregate an embedding vector $\tilde{\textbf{v}}_i^l$ \emph{for each relative window position $l$}, for each word $w_i$. Stacking these $2k$ context vectors into a matrix $\textbf{V}_i$ and collecting the $\theta_l^{w_i}$s in a vector yields:
+
+\begin{equation}
+    \textbf{V}_i = 
+          \begin{bmatrix}
+%            \vertbar  & & \vertbar  & \vertbar  & & \vertbar  \\
+            \tilde{\textbf{v}}_i^{-k} & \ldots & \tilde{\textbf{v}}_i^{-1} & \tilde{\textbf{v}}_i^{+1} & \ldots & \tilde{\textbf{v}}_i^{+k}    \\
+%            \vertbar  & & \vertbar  & \vertbar  & & \vertbar  \\
+          \end{bmatrix}
+\end{equation}
+\begin{equation}
+    \boldsymbol\theta_{i} =
+        \begin{bmatrix}
+            \theta_{-k}^{w_i} \\
+            \vdots \\
+            \theta_{-1}^{w_i} \\
+            \theta_{+1}^{w_i} \\
+            \vdots \\
+            \theta_{+k}^{w_i}
+        \end{bmatrix}
+\end{equation}
+
+Equation \eqref{equ:att_ri_full} can now be rewritten as a matrix vector multiplication:
+\begin{equation}\label{equ:att_ri_matrix}
+    \textbf{v}_i = \textbf{V}_i\boldsymbol\theta_i.
+\end{equation}
+
+In other words, this suggests instead of aggregating embedding vectors $\textbf{v}_i$ according to \eqref{eq:context-update}, to aggregate matrices $\textbf{V}_i$ upon parsing the corpus. The embedding vectors are then calculated as a multiplication with a parameter vector $\boldsymbol\theta_i$ according to \eqref{equ:att_ri_matrix}. Note that when $\boldsymbol\theta_i = \textbf{1}$ you recover the vanilla Random Indexing embeddings.
+
+The parameterized version effectively uses a form of attention mechanism, since we aim to focus our attention to certain parts of the word's contexts depending on the task at hand. Consequently, we will refer to this strategy as Attention Random Indexing (ATT-RI).
+
+\section{Example: Word Similarity} \label{cha:simlex_test}
+
+To exemplify the effectiveness of the proposed parameterization, we use the SimLex-999 \cite{Hill:2015} 
+%% and MEN 
+test
+%s
+in order to see how much the Spearman rank correlation can be improved by fitting the $\boldsymbol\theta_i$s such that cosine similarity between the embedding vectors correspond to the similarity ratings.
+%is a similarity dataset comprised of 1.000 word pairs. Each pair has associated annotations such as part-of-speech tag, concreteness of the words (1 to 7) and a similarity rating (from 0 to 10). The similarity scores are constructed to reflect true similarity rather than relatedness between words. This means that for example antonyms (as opposed to synonyms) are given a low similarity score, even though they can be argued to relate to each other. As an example of this, the word pair ('plane','jet') receives a similarity score of 8.1 while pairs like ('leg', 'arm') receives only 2.88.
+%
+%It is common to quantify two words' similarity by their vectors' mutual distance, according to some distance metric. One could argue it eligible to have a word space model in which mutual distances reflect the similarity scores provided by SimLex.
+%
+%Typically, word spaces are evaluated to SimLex by performing a Spearman Rank Correlation between the word vector distances and the SimLex scores. The Spearman Rank Correlation measures to which degree the relationship between the two can be described by a monotonic function. It returns a value between $-1$ and $+1$ and where the limit cases occur whenever the relationship is perfect monotonic.
+%
+Formally, we seek to minimize the following objective function:
+
+\begin{equation}
+    \underset{\boldsymbol\theta_*}{\text{min}}
+    \displaystyle\sum_{(w_i,w_j) \in \mathcal{S}} \underbrace{\frac{1}{2}\left(\cos{\alpha_{ij}} - s(w_i,w_j)\right)^2}_{f(w_i, w_j)}
+\end{equation}
+where $(w_i,w_j) \in \mathcal{S}$ corresponds to each word pair in SimLex. $s(w_i,w_j)$ is the SimLex similarity score for the word pair (scaled to $[0,1]$) and $\cos{\alpha_{ij}}$ is the cosine similarity between the word's corresponding vectors:
+
+\begin{equation}{\alpha_{ij}} = \frac{\textbf{v}_i^T\textbf{v}_j}{\|\textbf{v}_i\|_2 \|\textbf{v}_j\|_2}
+\end{equation}
+where $\textbf{v}_i$ and $\textbf{v}_j$ are $w_i$ and $w_j$'s corresponding word vectors, calculated as in equation \eqref{equ:att_ri_matrix}. Since this is a non-convex problem, SGD is applied as optimization strategy. Calculating the gradient of $f$ with respect to $\boldsymbol\theta_i$ and $\boldsymbol\theta_j$ is straightforward:
+
+\begin{gather}
+    \frac{\delta f}{\delta \boldsymbol\theta_i} = \left(\cos{\alpha_{ij}} - s(w_i,w_j)\right) \frac{\delta \cos{\alpha_{ij}}}{\delta \boldsymbol\theta_i} \\
+    \frac{\delta f}{\delta \boldsymbol\theta_j} = \left(\cos{\alpha_{ij}} - s(w_i,w_j)\right) \frac{\delta \cos{\alpha_{ij}}}{\delta \boldsymbol\theta_j}.
+\end{gather}
+
+Applying the chain rule, the gradient of $\cos{\alpha_{ij}}$ becomes:
+
+\begin{equation}
+\begin{split}
+    \frac{\delta \cos{\alpha_{ij}}}{\delta \boldsymbol\theta_i} & = \frac{\delta \cos{\alpha_{ij}}}{\delta \textbf{v}_i}\frac{\delta \textbf{v}_i}{\delta \boldsymbol\theta_i} \\
+    \frac{\delta \cos{\alpha_{ij}}}{\delta \textbf{v}_i} & = \frac
+        {\textbf{v}_j\|\textbf{v}_i\|_2 - \textbf{v}_i\frac{\textbf{v}_i^T\textbf{v}_j}{\|\textbf{v}_i\|_2}}
+        {\|\textbf{v}_i\|_2^2\|\textbf{v}_j\|_2} \\
+    \frac{\delta \textbf{v}_i}{\delta \boldsymbol\theta_i} & = \textbf{V}_i.
+\end{split}
+\end{equation}
+
+The expression for $\frac{\delta \cos{\alpha_{ij}}}{\delta \boldsymbol\theta_j}$ is the same, but with the subscripts interchanged. We now apply SGD to optimize the $\boldsymbol{\theta}_i$s iteratively using the following update rules:
+
+\begin{equation} \label{equ:simlex_update}
+\begin{split}
+    \boldsymbol\theta_i^{(t+1)} &  = \boldsymbol\theta_i^t - \eta \frac{\delta f}{\delta \boldsymbol\theta_i}  \\
+    \boldsymbol\theta_j^{(t+1)} &  = \boldsymbol\theta_j^t - \eta \frac{\delta f}{\delta \boldsymbol\theta_j}.
+\end{split}
+\end{equation}
+ 
+This procedure is performed using $\textbf{V}_*$ matrices generated from a dump of Wikipedia with the Random Indexing hyper-parameters listed in Table \ref{tab:att_ri_settings}. The $\boldsymbol{\theta}_i$s are initialized to one-vectors ($\boldsymbol\theta_* = \textbf{1}$) and updated according to equation \eqref{equ:simlex_update} with a learning rate $\eta = 1.0$ until convergence.
+
+\begin{table}[h]
+    \centering
+    \small{
+    \caption{Hyper-parameters for ATT-RI.}
+    \label{tab:att_ri_settings}
+    \begin{tabular}{|lll|}
+	\hline
+    \textbf{Parameter} & \textbf{Value} & \textbf{Description}\\
+    \hline
+    $d$                  & 2,000           & Dimensionality\\
+    $k$                  & 10              & Window size\\
+    $c$                  & 60             & Constant in frequency weight\\
+    $\epsilon$            & 10             & \begin{tabular}[x]{@{}l@{}}Non-zero elements in index vectors\\randomly drawn from $\{-1, +1\}$
+    \end{tabular}\\
+    \hline
+    \end{tabular}}
+\end{table}
+
+The results are summarized in Table \ref{tab:simlex_res}. We can see that the Spearman correlation is drastically improved with the optimized $\boldsymbol{\theta}_i$s. This experiment can be seen as, for each word $w_i$, finding a linear combination in the column space of $\textbf{V}_i$ that optimizes the cosine similarity of the word vectors to match the SimLex similarity scores. It is remarkable that optimizing the $\boldsymbol{\theta}_i$s in the relatively small 20-dimensional 
+% mathbb -> mathbf
+($\mathbf{R}^{2k}$) subspaces of the full word space ($\mathbf{R}^{2000}$) yields such a big improvement.
+
+\begin{table}[h]
+\centering
+\caption{Results of the SimLex experiment.}
+\label{tab:simlex_res}
+\begin{tabular}{|lll|}
+\hline
+          & \textbf{Avg. error} & \textbf{Spearman} \\ \hline
+Initial $\boldsymbol{\theta}_i$s ($\boldsymbol\theta_* = \textbf{1}$)  & 0.28  & 0.21 \\
+Optimized $\boldsymbol{\theta}_i$s & 0.19     &  {\bf 0.62}     \\ \hline
+\end{tabular}
+\end{table}
+
+\section{Example: Sentiment Classification}
+
+The improvements reported in the previous section should motivate the parameterization to be viable for improving the performance in text classification as well. In this section, we parameterize the embeddings for sentiment classification using two standard benchmarks; the Pang and Lee Sentence Polarity Dataset v1.0 (PL05) \cite{PL-05} and the Stanford Sentiment Treebank (SST) \cite{socher2013recursive}. The PL05 data consists of 10,662 short movie reviews that are classified as either positive or negative. Experiments using this dataset are split into 25\% test and 75\% train/validation sets and evaluated by 5-fold cross validation on the training/validation set. We make two consecutive runs, in total 10 trainings, and report their maximum, minimum and mean accuracy as well as their standard deviation. The SST data is an extension of PL05 with train/validation/test splits provided. The dataset also provides fine-grained labels (very positive, positive, neutral, negative, very negative). In this study we have however omitted the neutral labels and treated it as a binary classification problem by merging the very positive, positive, very negative and negative classes into two. We report the maximum, minimum and mean accuracy as well as the standard deviation of 10 consecutive runs using the provided train/val/test splits.
+
+We use two different classifiers in these experiments. The first is a standard neural network (referred to as MLP for Multi-Layer Perceptron) \cite{Rumelhart:1986} with one hidden layer of 120 nodes with sigmoid activations and one sigmoid output unit. All word vectors are normalized to an $l_2$ norm of 1 and naively summed to produce document vectors.
+%, as seen in figure \ref{fig:mlp}. 
+The weights in the neural network are also $l_2$ regularized with a constant factor of $\lambda = 0.001$. The second classifier is the model proposed by Kim \shortcite{kim:2014} which implements a Convolutional Neural Network (CNN). The hyper-parameters used are listed in table \ref{tab:cnn_settings}. Like the MLP model, the word embeddings are also normalized to unit length.
+
+\begin{table}[h]
+{\small
+\centering
+\caption{Hyper-parameters for CNN.}
+\label{tab:cnn_settings}
+\begin{tabular}{|lll|}
+\hline
+\textbf{Parameter} & \textbf{Value} & \textbf{Description}                  \\ \hline
+$n$                  & 300              & \begin{tabular}[x]{@{}l@{}}Number of filters,\\100 of height 3,4,5 respectively\end{tabular}\\
+$p$                  & 0.5              & Dropout rate                           \\
+$s$                  & 3                & Filter max $l_2$-norm \\
+\hline
+\end{tabular}}
+\end{table}
+
+As comparison with the different RI-based embeddings (RI, SGD-RI, and ATT-RI), we also include results using embeddings produced with SGNS \cite{W2V} and GloVe \cite{GloVe}, both with 300-dimensional vectors and a window size of 2. We also include results using embeddings randomly sampled from a uniform $U(-0.25, 0.25)$ distribution (RAND). All word embeddings (except for the RAND vectors) are pre-trained (unsupervised) on a dump of Wikipedia. We list all hyper-parameters for RI, SGNS and GloVe in table \ref{tab:ri_settings}, \ref{tab:sg_settings} and \ref{tab:gl_settings}
+
+\begin{table}[h] 
+{\small
+    \centering
+    \caption{Hyper-parameters for RI}
+    \label{tab:ri_settings}
+    \begin{tabular}{|lll|}
+    \hline
+    \textbf{Parameter} & \textbf{Value} & \textbf{Description} \\ \hline
+    $d$                  & 2,000           & Dimensionality                                                                                                         \\
+    $k$                  & 2              & Window size                                                                                                            \\
+    $c$                  & 60             & Constant                                                                                  \\
+    $\epsilon$            & 10             & \begin{tabular}[c]{@{}l@{}}\# non-zero elements in index \\ vectors randomly drawn from \\ $\{-1, +1\}$\end{tabular} \\ \hline
+\end{tabular}}
+\end{table}
+
+\begin{table}[h] \small
+    \centering
+    \caption{Hyper-parameters for SGNS}
+    \label{tab:sg_settings}
+    \begin{tabular}{|lll|}
+    \hline
+    \textbf{Parameter} & \textbf{Value} & \textbf{Description}                  \\ \hline
+    $d$                  & 300              & Dimensionality                          \\
+    $k$                  & 2                & Window size                             \\
+    negative             & 5                & \begin{tabular}[c]{@{}l@{}}Number of negative samples \\ per positive \end{tabular} \\
+    down sampling        & no               & No down sampling is applied       \\
+    $\alpha$             & 0.025            & Initial learning rate                     \\ 
+    iter                 & 5                & Number of iterations \\ \hline
+    \end{tabular}
+    \end{table}
+    
+\begin{table}[h] \small
+    \centering
+    \caption{Hyper-parameters for GloVe}
+    \label{tab:gl_settings}
+    \begin{tabular}{|lll|}
+    \hline
+    \textbf{Parameter} & \textbf{Value} & \textbf{Description}                  \\ \hline
+    $d$                  & 300              & Dimensionality                          \\
+    $k$                  & 2                & Window size                             \\
+    iter                 & 15               & Number of training iterations \\
+    x-max                & 10               & Cutoff in weighting function       \\
+    $\alpha$             & 0.75             & \begin{tabular}[c]{@{}l@{}}Constant in exponent of weighting \\ function \end{tabular} \\
+    $\eta$               & 0.05             & Initial learning rate \\
+    \hline
+    \end{tabular}
+    \end{table}
+
+The results of all experiments are shown in table \ref{tab:results} (next page).\footnote{Since our focus in this paper is the effect of the word embeddings, we will not comment further on the performance differences between the MLP and CNN classifiers.}
+%The accuracies for the PL05 dataset are slightly lower than SST, which is consistent with the results of others \cite{kim:2014,ZhangWallace2015}. Comparing the MLP with the CNN, the latter consistently outperformed the former with about 3-6 points. This is not surprising and one major difference is that the CNN takes word order in consideration whereas the MLP does not. Another interesting observation is the fact that the variances are notably higher in the MLP model. The reason for this must be due to the neural network getting stuck in severe local minima from which it cannot escape. In the CNN, dropout is applied as a regularizer at its fully connected layer that may have influenced the fact that its variances are so much lower. 
+Comparing the various embeddings, it is obvious that the performance differences are very small, and thus not likely to be of any significant practical importance. This is especially true for the MLP experiments where the variances reach over two points in many cases. On the other hand, all embeddings outperform the randomized RAND vectors, which demonstrates that classification performance is improved when the model can take semantic information into account. The best performing embedding for the MLP classifier is ATT-RI, while SGNS performs better using the CNN model. The GloVe embeddings, despite their theoretical similarities to the SGNS embeddings \cite{suzuki-nagata:2015:ACL-IJCNLP}, consistently underperform both in comparison with SGNS and ATT-RI (and, in the case of the MLP classifier, also the SGD-RI embeddings). This is in contrast to the experiments performed by \cite{ZhangWallace2015} where the difference was minor.
+
+\begin{table*}[!ht]
+\centering
+\caption{Experiment results. Mean accuracies in \%. The parentheses contain the maximum achieved accuracy, the standard deviation and the minimum achieved accuracy of the consecutive runs}
+\label{tab:results}
+\begin{tabular}{|l|ll|}
+\hline
+\textbf{\textbf{Emb + Model}}  & \textbf{\textsc{pl05}} & \textbf{\textsc{sst}} \\
+\hline\hline
+\textsc{\itab{rand} \tab{mlp}}      & 68.23 ($\uparrow$ 69.58, $\pm$0.98, $\downarrow$ 66.32)    & 69.89 ($\uparrow$ 71.11, $\pm$0.83, $\downarrow$ 68.64) \\
+\hline
+\textsc{\itab{ri} \tab{mlp}}        & 72.45 ($\uparrow$ {\bf 74.91}, $\pm$2.99, $\downarrow$ 66.54)    & 75.13 ($\uparrow$ 77.98, $\pm$2.54, $\downarrow$ 73.75) \\
+\textsc{\itab{sgd-ri} \tab{mlp}}    & 73.62 ($\uparrow$ 74.16, $\pm$0.77, $\downarrow$ 71.42)    & 77.91 ($\uparrow$ 78.80, $\pm$0.82, $\downarrow$ 76.11) \\
+\textsc{\itab{att-ri} \tab{mlp}}    & 72.45 ($\uparrow$ 74.83, $\pm$2.20, $\downarrow$ 68.90)   & \textbf{78.03} ($\uparrow$ {\bf 79.63}, $\pm$1.60, $\downarrow$ 74.46) \\
+\hline
+\textsc{\itab{sgns} \tab{mlp}}        & {\bf 73.84} ($\uparrow$ 74.76, $\pm$1.14, $\downarrow$ 71.57)    & 77.27 ($\uparrow$ 79.57, $\pm$3.13, $\downarrow$ 70.02) \\
+\textsc{\itab{glove} \tab{mlp}}        & 71.29 ($\uparrow$ 73.67, $\pm$1.67, $\downarrow$ 68.60)    & 76.26 ($\uparrow$ 77.32, $\pm$1.66, $\downarrow$ 71.61) \\ 
+\hline\hline
+\textsc{\itab{rand} \tab{cnn}}      & 72.12 ($\uparrow$ 72.91, $\pm$0.50, $\downarrow$ 71.28)    & 76.99 ($\uparrow$ 77.94, $\pm$0.76, $\downarrow$ 75.50) \\
+\hline
+\textsc{\itab{ri} \tab{cnn}}        & 76.18 ($\uparrow$ 76.60, $\pm$0.35, $\downarrow$ 75.51)    & 81.83 ($\uparrow$ 82.72, $\pm$0.39, $\downarrow$ 81.39) \\
+\textsc{\itab{sgd-ri} \tab{cnn}}    & 75.67 ($\uparrow$ 76.26, $\pm$0.63, $\downarrow$ 74.22)    & 81.31 ($\uparrow$ 81.89, $\pm$0.38, $\downarrow$ 80.78) \\
+\textsc{\itab{att-ri} \tab{cnn}}    & 77.55 ($\uparrow$ 78.08, $\pm$0.31, $\downarrow$ 77.09)              & 81.77 ($\uparrow$ 82.64, $\pm$0.60, $\downarrow$ 80.66) \\
+\hline
+\textsc{\itab{sgns} \tab{cnn}}        & \textbf{77.92} ($\uparrow$ \textbf{78.34}, $\pm$0.24, $\downarrow$ 77.55)    & \textbf{83.44} ($\uparrow$ \textbf{84.00}, $\pm$0.51, $\downarrow$ 82.00) \\
+\textsc{\itab{glove} \tab{cnn}}        & 77.35 ($\uparrow$ 77.77, $\pm$0.34, $\downarrow$ 76.79)    & 81.56 ($\uparrow$ 82.06, $\pm$0.34, $\downarrow$ 80.78) \\ 
+\hline
+\end{tabular}
+\end{table*}
+
+Comparing the ATT-RI embeddings with SGD-RI and standard RI, it seems ATT-RI performs well, with the highest mean accuracy on the SST dataset, using the MLP model. SGD-RI improves the results compared to the standard RI embeddings for the MLP model, but not for the CNN model. Updating of the SGNS embeddings just like SGD-RI for the CNN have also been studied in Zhang and Wallace \shortcite{ZhangWallace2015}, who report a performance boost of about $\sim$0.8\%. This also contrasts to our results with SGD-RI using the CNN model, which instead decrease the performance compared to standard RI. This could be due to the RI embeddings being more high dimensional than SGNS, yielding a larger and harder parameter space to optimize.
+
+Comparing our results to other reported results in the literature, Kim \shortcite{kim:2014} and Zhang and Wallace \shortcite{ZhangWallace2015} manage to push the boundaries up to 80.10 for the PL05 data, and up to 84.88 for the SST data using SGNS embeddings pre-trained on a much larger 100 billion tokens Google News dataset. We believe this somewhat increased performance is partly due to the bigger dataset. Another factor could also be that the language style in news articles is more similar to the movie reviews compared to Wikipedia, arguably yielding better-suited embeddings.
+ 
+\section{Optimized Context Profiles}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{adjectives.pdf}
+    \includegraphics[width=\textwidth]{det.pdf}
+      \includegraphics[width=\textwidth]{nouns.pdf}
+  \caption{\label{fig:att_ri_adj} The learned weights for four adjectives (top row), four determiners (middle row), and four nouns (bottom row).}
+\end{figure*}
+
+When the ATT-RI parametrization was proposed, the hypothesis was that certain relative positions in the context windows would be more important in describing the context of a word than others. The results in the two previous sections demonstrate that the proposed attention mechanism is able to improve the embeddings in both a word similarity task, and (to a lesser extent) a sentiment classification task. This indicates that the parameterization is actually able to find useful context profiles for terms used in the various test settings. In this section, we exemplify the kinds of context profiles learned by the attention model when parameterized for the sentiment classification task. 
+%We initialized all window weights $\boldsymbol\theta_i$s to one vectors and updated using backpropagation to the task at hand, sentiment analysis in our case.
+
+%\begin{figure*}
+%  \centering
+%  \caption{\label{fig:att_ri_det} The learned weights for four determiners}
+%\end{figure*}
+%\begin{figure*}
+%  \centering
+%  \caption{\label{fig:att_ri_nouns} The learned weights for four nouns}
+%\end{figure*}
+
+Figure \ref{fig:att_ri_adj} (on page 7) shows the learned weights per context window position for four different adjectives (top row), four different determiners (middle row), and four different nouns (bottom row). The parameterization obviously has a larger effect for some words than for others; as an example, the windows for ``good" and ``bad" is much more parameterized than the windows for ``reliable" and ``positive", and the windows for the determiners are in general much more parameterized than the windows for nouns. It is interesting to note that there is a small tendency that the windows for the adjectives have a higher weight in the $+1$ position, which is consistent with a linguistic analysis of adjectives as qualifiers of succeeding nouns. By contrast, the window positions for the determiners seem to have a higher weight in the positions just preceding the focus word, while the windows for nouns seem to have very small parameterization. It thus seems as if the parameterization is able to learn slightly different window profiles for different parts of speech.
+
+%\begin{figure*}
+%  \centering
+%  \includegraphics[scale=0.145]{ri.pdf}
+%  \includegraphics[scale=0.145]{sgd_ri.pdf}
+%  \caption{\label{fig:ri} }
+%\end{figure*}
+
+As noted in the introduction, is is common practice in distributional semantics to weight the context windows by the distance to the focus word. If this is an optimal strategy, we should see a bell-like curve leaning to zero at the edges. Such a shape is partially present for some of the words, for example in ``and", ``of", ``good" and ``bad", but for most words, the weights are almost unchanged. We believe this could be due to the vanishing gradient problem where the gradient seems to vanish deeper down the model. In addition, the less common the word is in the training set, the less it is updated. Another interesting aspect of the learned weights is that by inspecting the $l_1$ norm of the weight vectors, we get a hint of the words' relative importance for the given task. We can see that the $l_1$ norm for the words ``good" and ``bad" are larger than for ``the" and ``of", which feels natural for the sentiment classification task.
+
+\section{Conclusion}
+
+This paper has introduced a simple attention mechanism for the RI framework, which has also been derived in terms of convolution. The attention mechanism parameterizes the positions in the context windows with respect to the performance of the embeddings in some given task, such as word similarity or text classification. Our experiments show that the proposed ATT-RI model is able to improve the performance of the embeddings in many cases, and that the results are competitive in comparison with other well-known embeddings. The idea of parameterizing the window positions could also be applied to other distributional semantic models, such as SGNS. 
+
+We note that all embeddings used in the sentiment classification task produce very similar results. This indicates that in practice, the word embeddings included in this paper are more or less equivalent. It is therefore doubtful whether it is possible to draw any conclusions based on these results regarding the question whether any single embedding is superior to the others in the general case.
+
+The examples of context profiles provided as examples of the parameterization shows some interesting effects. However, training the position-dependent weights is non-trivial, and one could probably think of better initializations of the weights than just one-vectors, for example using a bell-like shape. The vanishing gradient problem would however remain, and the weights for uncommon words will not change significantly.
+
+The conclusion of the experiments using SGD-RI is that updating the embeddings jointly with the classification model using SGD does not necessarily improve generalization. This is in fact not so strange. Moving around only a subset of the words (i.e.~the words present in the training set), while leaving the rest untouched produces an inconsistent space with undefined distributional properties between updated and non-updated embeddings. It could therefore be an idea to use randomized embeddings for all words not present in the training set because they then can be regarded as approximately orthogonal, and thus should not interfere with the semantic structure.
+
+%One could also wonder what impact the updating of the embeddings really had. A visualization of the embeddings before and after the updates is therefore shown in Figure \ref{fig:ri}. The updated embeddings are projected onto their two major principal axes and plotted to the right, and the original embeddings are projected onto the same axes and plotted to the left. Recall that the SST dataset consists of movie reviews and by inspecting the plots, we can see some tendencies that positive words (``best", ``positive", ``great", ``excellent", etc.) show up on the left and more negative words in this context (``repetitive", ``poor", ``obvious", ``irrelevant", ``unnecessary", etc.) end up to the right. This pattern is hard to be seen in the original embeddings, and should thus be due to the updating.
+
+% Most related work on inputting vector representations of words into supervised learning models for text classification have used randomized embeddings which then are updated just like \textsc{sgd ri} \cite{SocherEtAl2011:RAE, kim:2014, Kalchbrenner2014, socher2013recursive, collobert:2011b}.
+ 
+\bibliographystyle{acl2016}
+\bibliography{main}
+
+\end{document}
